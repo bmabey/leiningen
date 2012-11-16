@@ -36,7 +36,7 @@
                :twelve 12 ; testing unquote
 
                :repositories [["central" {:url "http://repo1.maven.org/maven2/"}]
-                              ["clojars" {:url "https://clojars.org/repo/"}]]})
+                              ["clojars" {:url "http://releases.clojars.org/repo/"}]]})
 
 (deftest test-read-project
   (let [actual (read (.getFile (io/resource "p1.clj")))]
@@ -113,17 +113,16 @@
                  :dependencies))))))
 
 (deftest test-global-exclusions
-  (is (= '[[[org.clojure/clojure]]
-           [[pomegranate/pomegranate] [org.clojure/clojure]]
-           [[org.clojure/clojure]]]
-         (map #(distinct (:exclusions (apply hash-map %)))
-              (-> {:dependencies
-                   '[[lancet "1.0.1"]
-                     [leiningen-core "2.0.0-SNAPSHOT" :exclusions [pomegranate]]
-                     [clucy "0.2.2" :exclusions [org.clojure/clojure]]]
-                   :exclusions '[org.clojure/clojure]}
-                  (merge-profiles [:default])
-                  :dependencies)))))
+  (let [project {:dependencies
+                 '[[lancet "1.0.1"]
+                   [leiningen-core "2.0.0-SNAPSHOT" :exclusions [pomegranate]]
+                   [clucy "0.2.2" :exclusions [org.clojure/clojure]]]
+                 :exclusions '[org.clojure/clojure]}
+        dependencies (:dependencies (merge-profiles project [:default]))]
+    (is (= '[[[org.clojure/clojure]]
+             [[org.clojure/clojure] [pomegranate/pomegranate]]
+             [[org.clojure/clojure]]]
+           (map #(distinct (:exclusions (apply hash-map %))) dependencies)))))
 
 (defn add-seven [project]
   (assoc project :seven 7))

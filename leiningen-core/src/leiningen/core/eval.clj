@@ -39,8 +39,8 @@
 
 (defn platform-nullsink []
   (io/file (if (= :windows (get-os))
-          "NUL"
-          "/dev/null")))
+             "NUL"
+             "/dev/null")))
 
 ;; # Preparing for eval-in-project
 
@@ -54,10 +54,14 @@
           task-name (main/lookup-alias task-name project)]
       (main/apply-task task-name (dissoc project :prep-tasks) task-args))))
 
-;; Some tasks need to wait till the project is fully prepped before continuing.
-(defonce prep-blocker (atom (promise)))
+;; Some tasks
+(defonce ^{:doc "Block on this to wait till the project is fully prepped."}
+  prep-blocker (atom (promise)))
 
-(defn prep [project]
+(defn prep
+  "Before we can run eval-in-project we need to prep the project by running
+  javac, compile, and any other tasks the project specifies."
+  [project]
   ;; This must exist before the project is launched.
   (.mkdirs (io/file (:compile-path project "/tmp")))
   (classpath/resolve-dependencies :dependencies project)
@@ -92,7 +96,7 @@
     (conj (vec (butlast args))
           (str (last args) " " x))))
 
-(defn ^{:internal true} get-jvm-opts-from-env [env-opts]
+(defn ^:internal get-jvm-opts-from-env [env-opts]
   (and (seq env-opts)
        (reduce join-broken-arg [] (.split env-opts " "))))
 
@@ -113,7 +117,7 @@
       ~@(if-let [{:keys [host port non-proxy-hosts]} (classpath/get-proxy-settings)]
           [(d-property [:http.proxyHost host])
            (d-property [:http.proxyPort port])
-	   (d-property [:http.nonProxyHosts non-proxy-hosts])]))))
+           (d-property [:http.nonProxyHosts non-proxy-hosts])]))))
 
 (defn- pump [reader out]
   (let [buffer (make-array Character/TYPE 1000)]
@@ -124,23 +128,32 @@
         (Thread/sleep 100)
         (recur (.read reader buffer))))))
 
-(def ^:dynamic *dir* (System/getProperty "user.dir"))
+(def ^:dynamic *dir*
+  "Directory in which to start subprocesses with eval-in-project or sh."
+  (System/getProperty "user.dir"))
 
-(def ^:dynamic *env* nil)
+(def ^:dynamic *env*
+  "Environment map with which to start subprocesses with eval-in-project or sh.
+  Merged into the current environment unless ^:replace metadata is attached."
+  nil)
 
-(def ^:dynamic *pump-in* true)
+(def ^:dynamic *pump-in*
+  "Rebind this to false to disable forwarding *in* to subprocesses."
+  true)
 
 (defn- overridden-env
   "Returns an overridden version of the current environment as an Array of
   Strings of the form name=val, suitable for passing to Runtime#exec."
   [env]
-  (->> (merge {} (System/getenv) env)
+  (->> (if (:replace (meta env))
+         env
+         (merge {} (System/getenv) env))
        (filter val)
        (map #(str (name (key %)) "=" (val %)))
        (into-array String)))
 
 (defn sh
-  "A version of clojure.java.shell/sh that streams out/err."
+  "A version of clojure.java.shell/sh that streams in/out/err."
   [& cmd]
   (let [env (overridden-env *env*)
         proc (.exec (Runtime/getRuntime) (into-array cmd) env (io/file *dir*))]
@@ -174,7 +187,9 @@
     ["-classpath" (string/join java.io.File/pathSeparatorChar
                                (classpath/get-classpath project))]))
 
-(defn shell-command [project form]
+(defn shell-command
+  "Calculate vector of strings needed to evaluate form in a project subprocess."
+  [project form]
   `(~(or (:java-cmd project) (System/getenv "JAVA_CMD") "java")
     ~@(classpath-arg project)
     ~@(get-jvm-args project)
@@ -183,7 +198,7 @@
 ;; # eval-in multimethod
 
 (defmulti eval-in
-  "Evaluate the given from in either a subprocess or the leiningen process."
+  "Evaluate the given form in various contexts."
   ;; Force it to be a keyword so that we can accept symbols too. That
   ;; way ^:replace and ^:displace metadata can be applied.
   (fn [project _] (keyword (name (:eval-in project :subprocess)))))
@@ -230,9 +245,9 @@
   (doseq [path (classpath/get-classpath project)]
     (pomegranate/add-classpath path))
   (doseq [opt (get-jvm-args project)
-            :when (.startsWith opt "-D")
-            :let [[_ k v] (re-find #"^-D(.*?)=(.*)$" opt)]]
-      (System/setProperty k v))
+          :when (.startsWith opt "-D")
+          :let [[_ k v] (re-find #"^-D(.*?)=(.*)$" opt)]]
+    (System/setProperty k v))
   (eval form))
 
 (defn eval-in-project

@@ -27,7 +27,7 @@
   "Transform an exclusion vector into a map that is easier to combine with
   meta-merge. This allows a profile to override specific exclusion options."
   [spec]
-  (when-let [[id & {:as opts}] (fix spec symbol? vector)]
+  (if-let [[id & {:as opts}] (fix spec symbol? vector)]
     (-> opts
         (merge (artifact-map id))
         (with-meta (meta spec)))))
@@ -36,7 +36,7 @@
   "Transform an exclusion map back into a vector of the form:
   [name/group & opts]"
   [exclusion]
-  (when-let [{:keys [artifact-id group-id]} exclusion]
+  (if-let [{:keys [artifact-id group-id]} exclusion]
     (into [(symbol group-id artifact-id)]
           (apply concat (dissoc exclusion :artifact-id :group-id)))))
 
@@ -44,20 +44,20 @@
   "Transform a dependency vector into a map that is easier to combine with
   meta-merge. This allows a profile to override specific dependency options."
   [dep]
-  (when-let [[id version & {:as opts}] dep]
+  (if-let [[id version & {:as opts}] dep]
     (-> opts
         (merge (artifact-map id))
         (assoc :version version)
-        (update :exclusions #(when % (map exclusion-map %)))
+        (update :exclusions #(if % (map exclusion-map %)))
         (with-meta (meta dep)))))
 
 (defn dependency-vec
   "Transform a dependency map back into a vector of the form:
   [name/group \"version\" & opts]"
   [dep]
-  (when-let [{:keys [artifact-id group-id version]} dep]
+  (if-let [{:keys [artifact-id group-id version]} dep]
     (-> dep
-        (update :exclusions #(when % (map exclusion-vec %)))
+        (update :exclusions #(if % (map exclusion-vec %)))
         (dissoc :artifact-id :group-id :version)
         (->> (apply concat)
              (into [(symbol group-id artifact-id) version]))
@@ -127,8 +127,7 @@
 (def default-repositories
   (with-meta
     [["central" {:url "http://repo1.maven.org/maven2/"}]
-     ;; TODO: point to releases-only before 2.0 is out
-     ["clojars" {:url "https://clojars.org/repo/"}]]
+     ["clojars" {:url "http://releases.clojars.org/repo/"}]]
     {:reduce add-repo}))
 
 (def deploy-repositories
@@ -460,15 +459,6 @@
         (init-lein-classpath)
         (load-plugins))
       (activate-middleware)))
-
-(defn ^{:deprecated "2.0.0-preview3"} conj-dependency
-  "Add a dependency into the project map if it's not already present. Warn the
-  user if it is. Plugins should use this rather than altering :dependencies.
-
-  Deprecated in 2.0.0-preview3."
-  [project dependency]
-  (println "WARNING: conj-dependencies is deprecated.")
-  (update-in project [:dependencies] conj dependency))
 
 (defn add-profiles
   "Add the profiles in the given profiles map to the project map, taking care
